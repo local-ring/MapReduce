@@ -59,9 +59,22 @@ class MasterNode:
 
     """
     Initiate the cluster, start the mappers and reducers processes
-    masternode need to pass the following information to the mappers and reducers:
-    - the address of the master node
-    - the address of the shuffler
+    
+    The master node need to pass the following information to the mappers:
+    - the address of the master node push assigned data
+    - the address of the shuffler pull sockets for the mappers
+    - the ID of the mapper 
+
+    The master node need to pass the following information to the reducers:
+    - the address of the master node pull (to get the final result and combine)
+    - the address of the shuffler push sockets to the reducers
+    - the ID of the reducer
+
+    The master node will also start the shuffle process, passing
+    - the address of the master
+    - the address it will be pulling the data from mapper
+    - the address it will be pushing the data to the reducers
+
     """
     def initiate(self, numMappers, numReducers):
         for i in range(numMappers):
@@ -79,6 +92,8 @@ class MasterNode:
             
         # start the shuffle process
         self.shuffleProcess = subprocess.Popen(['python', 'shuffler.py', self.shufflerAddr, str(numReducers)])
+        
+        print(f"The cluster {int(os.getpid())} has been initiated")
 
         return int(os.getpid())
     
