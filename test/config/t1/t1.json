@@ -1,0 +1,9 @@
+{
+    "numMappers": 4,
+    "numReducers": 2,
+    "workType": "wordcount",
+    "inputData": "test/config/t1/t1.txt",
+    "outputLocation": "test/output/t1/results.txt",
+    "ports": [4001, 4002, 4003, 4004, 4408, 5423]
+}
+  

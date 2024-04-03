@@ -1,9 +1,8 @@
 import zmq
 import json
-
-import subprocess   
-import os
-import threading
+import os, sys, subprocess, threading
+from utils import zmq_addr
+import time
 
 """
 There are two main applications for this script:
@@ -32,120 +31,161 @@ The user can only interact with the master node through a well-defined API (TODO
 - or the most naive more, parse the configuration file ann get the parameters from there
 """
 
+
 class MasterNode:
-    def __init__(self,
-                 numMappers,
-                 numReducers,
-                 Addrs):
-        if len(Addrs) != numMappers + numReducers + 1:
-            raise ValueError('The number of addresses does not match the number of mappers and reducers')
-        self.mapperAddrs = Addrs[:numMappers]
-        self.reducerAddrs = Addrs[numMappers:]       
-        self.shufflerAddr = Addrs[-1]
-                
-        self.clusterID = self.initiate(numMappers, numReducers, Addrs)
+    def __init__(self, ports=None):
+        """
+        Here we need six fixed ports for the following:
+            - master node: push to mappers, pull from reducers, 
+            - shuffler: push to reducers, pull from mappers
+            - control (mainly to tell workers which type of work to do and track the progress)
+        """     
+
+        if ports is None:
+            ports = [5555, 5556, 5557, 5558, 5559, 6000]
+
+        self.masterPull, self.masterPush, self.shufflerPull, self.shufflerPush, self.controlPull, self.controlPush = ports
+        self.mapperPull = self.masterPush
+        self.reducerPull = self.shufflerPush
+        self.reducerPush = self.masterPull
+        self.mapperPush = self.shufflerPull
+        
+        self.numMappers = 0
+        self.numReducers = 0
 
 
-        if self.workType not in ['word-count', 'inverted-index']:
-            raise ValueError('The work type is not supported')
-        elif self.workType == 'word-count':
-            self.mapFunction = 'map_wc'
-            self.reduceFunction = 'reduce_wc'
-        else:
-            self.mapFunction = 'map_ii'
-            self.reduceFunction = 'reduce_ii'
-
-
-
-    """
-    Initiate the cluster, start the mappers and reducers processes
-    
-    The master node need to pass the following information to the mappers:
-    - the address of the master node push assigned data
-    - the address of the shuffler pull sockets for the mappers
-    - the ID of the mapper 
-
-    The master node need to pass the following information to the reducers:
-    - the address of the master node pull (to get the final result and combine)
-    - the address of the shuffler push sockets to the reducers
-    - the ID of the reducer
-
-    The master node will also start the shuffle process, passing
-    - the address of the master
-    - the address it will be pulling the data from mapper
-    - the address it will be pushing the data to the reducers
-
-    """
     def initiate(self, numMappers, numReducers):
-        for i in range(numMappers):
+        """
+        Initiate the cluster, start the mappers and reducers processes
+        
+        The master node need to pass the following information to the mappers:
+        - the address of the master node push assigned data
+        - the address of the shuffler pull sockets for the mappers
+        - the ID of the mapper 
+
+        The master node need to pass the following information to the reducers:
+        - the address of the master node pull (to get the final result and combine)
+        - the address of the shuffler push sockets to the reducers
+        - the ID of the reducer
+
+        The master node will also start the shuffle process, passing
+        - the address of the master
+        - the address it will be pulling the data from mappers
+        - the address it will be pushing the data to the reducers
+
+    """
+        self.numMappers = numMappers
+        self.numReducers = numReducers
+
+        context = zmq.Context()
+
+        self.controlPullSocket = context.socket(zmq.PULL)
+        self.controlPullSocket.bind(zmq_addr(self.controlPull))
+
+        self.controlPushSocket = context.socket(zmq.PUB) # we need to send the work type to all workers, not push-pull pattern anymore
+        self.controlPushSocket.bind(zmq_addr(self.controlPush))
+
+
+        self.pushSocket = context.socket(zmq.PUSH)
+        self.pushSocket.bind(zmq_addr(self.masterPush))
+
+        self.pullSocket = context.socket(zmq.PULL)
+        self.pullSocket.bind(zmq_addr(self.masterPull))
+
+        # self.controlSocket = context.socket(zmq.ROUTER)
+        # self.controlSocket.bind(zmq_addr(self.control))
+
+
+        # start the shuffle process
+        subprocess.Popen(['python', 
+                          'shuffler.py', 
+                          zmq_addr(self.shufflerPull), 
+                          zmq_addr(self.shufflerPush), 
+                          str(self.numMappers),
+                          str(self.numReducers)])
+
+        time.sleep(1) # wait for the shuffler to start
+
+        # start the mappers and reducers
+        for i in range(numMappers):    
             subprocess.Popen(['python', 
                               'mapper.py', 
-                               self.mapperAddrs[i], 
-                               self.shufflerAddr,
-                               str(i)])
-
-        for i in range(numReducers):
+                              zmq_addr(self.mapperPull, interface='localhost'), 
+                              zmq_addr(self.mapperPush, interface='localhost'), 
+                              zmq_addr(self.controlPush, interface='localhost'),
+                              zmq_addr(self.controlPull, interface='localhost'),
+                              str(i)])
+        for j in range(numReducers):
             subprocess.Popen(['python', 
                               'reducer.py', 
-                               self.reducerAddrs[i],                   
-                               str(i)])
-            
-        # start the shuffle process
-        self.shuffleProcess = subprocess.Popen(['python', 'shuffler.py', self.shufflerAddr, str(numReducers)])
-        
-        print(f"The cluster {int(os.getpid())} has been initiated")
-
+                              zmq_addr(self.reducerPull, interface='localhost'), 
+                              zmq_addr(self.reducerPush, interface='localhost'),
+                              zmq_addr(self.controlPush, interface='localhost'),
+                              zmq_addr(self.controlPull, interface='localhost'),
+                              str(j)])
+                   
+        print(f"The cluster {int(os.getpid())} has been initiated")       
         return int(os.getpid())
     
-    def mapreduce(self, inputData, mapFunction, reduceFunction, outputLocation):
-        # send the map function to the mappers
-        for i in range(len(self.mapperAddrs)):
-            threading.Thread(target=self.sendtoMapper, args=(mapFunction, i)).start()
-        
-        # send the reduce function and output location to the reducers
-        for i in range(len(self.reducerAddrs)):
-            threading.Thread(target=self.sendtoReducer, args=(reduceFunction, outputLocation, i)).start()
-        
-        # send 
+    def mapreduce(self, inputData, outputLocation, workType):
+        """
+        This function is responsible for 
+            - splitting the context and 
+            - sending it to the mappers
+        Here for load balancing, we use multithreading to send the data to the mappers instead of sending the data to the mappers one by one according to the order of list which will cause some mappers to be idle
+        """
 
-        # once receiving the ready signal from the mappers, start sending the data to the mappers
-    """
-    This function is responsible for 
-        - splitting the context and 
-        - sending it to the mappers
+        # before starting the process, we need to send work type to the mappers and reducers
+        time.sleep(1) # wait for the workers to start
+        self.controlPushSocket.send(workType.encode())
 
-    Here for load balancing, we use multithreading to send the data to the mappers instead of sending the data to the mappers one by one according to the order of list which will cause some mappers to be idle
-    """
-    def map(self, context):
-        with open(context, 'r') as f:
+        readyWorkers = 0
+        numWorkers = self.numMappers + self.numReducers
+
+        while readyWorkers < numWorkers:
+            message = self.controlPullSocket.recv().decode()
+            if message == 'ready':
+                readyWorkers += 1
+
+        # for i in range(numWorkers):
+            # workerID, _ = self.controlSocket.recv_multipart()
+            # print(f"Sending work type to {workerID}")
+            # self.controlSocket.send_multipart([workerID, workType.encode()])
+
+        # collect ready messages from the workers, when all ready, which means all know what they do
+        # start sending the data
+        # while readyWorkers < numWorkers:
+        #     workerID, message = self.controlSocket.recv_multipart()
+        #     if message == b'ready':
+        #         readyWorkers += 1
+
+        print("All workers are ready!")
+        
+
+        with open(inputData, 'r') as f:
             data = f.readlines()
+
         numLines = len(data)
-        numLinesPerMapper = numLines // len(self.mapperAddrs)
-        threads = []
-        for i in range(len(self.mapperAddrs)):
+        numLinesPerMapper = numLines // self.numMappers
+
+    
+        def sendToMapper(data):
+            data = "".join(data)
+            self.pushSocket.send_string(data)
+        for i in range(self.numMappers):
             start = i * numLinesPerMapper
-            end = (i + 1) * numLinesPerMapper
-            if i == len(self.mapperAddrs) - 1: # sorry to the last mapper, more data for you (sometime less)
-                end = numLines
-            thread = threading.Thread(target=self.sendtoMapper, args=(data[start:end], i))
+            end = (i + 1) * numLinesPerMapper if i != self.numMappers - 1 else numLines # sorry for the last mapper, maybe more lines than the others
+            thread = threading.Thread(target=sendToMapper, args=(data[start:end],))
             thread.start()
-            threads.append(thread)
-        
-    # send the assigned data to the mappers
-    def sendtoMapper(self, data, mapperID):
-        context = zmq.Context() # create a context
-        socket = context.socket(zmq.PUSH)
-        socket.connect(self.mapperAddrs[mapperID])
-        for line in data:
-            socket.send_string(line)
-        socket.close()
-        context.term() # close the context
-        
-
-    def sendtoReducer(self, data, reducerID):
-        pass
 
 
+        results = []
+        # receive a predefined number of messages from the reducers
+        for i in range(self.numReducers):
+            results.append(self.pullSocket.recv_string())
+        with open(outputLocation, 'w') as f:
+            for result in results:
+                f.write(result)
 
     """
     destroy the cluster
@@ -153,14 +193,30 @@ class MasterNode:
     def destroy(self):
         pass
 
-def initCluster(numMappers, numReducers):
-    master = MasterNode(numMappers, numReducers)
-    return master
 
 if __name__ == '__main__':
-    config = input('Enter the configuration file: ')
+    # config = input('Enter the configuration file: ')
+    if len(sys.argv) != 2:
+        print("Usage: python mapreduce.py <config>")
+        sys.exit(1)
+    
+    config = sys.argv[1]
     with open(config, 'r') as f:
         config = json.load(f)
     
-    master = initCluster(config['numMappers'], config['numReducers'])
+    """
+    We need to pass the following information to the master node:
+    - the number of mappers
+    - the number of reducers
+    - the type of work
+    - the input data
+    - the output location
+    - the ports for the master node and the shuffler
+    """
+
+    master = MasterNode(config['ports'])
+    master.initiate(config['numMappers'], config['numReducers'])
+    master.mapreduce(config['inputData'], config['outputLocation'], config['workType'])
+    master.destroy()
+    
     
