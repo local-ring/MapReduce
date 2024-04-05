@@ -1,0 +1,4 @@
+a doc-3.txt 1
+v doc-3.txt 1
+v doc-3.txt 1
+w doc-3.txt 1

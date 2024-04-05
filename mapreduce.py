@@ -135,8 +135,11 @@ class MasterNode:
         Here for load balancing, we use multithreading to send the data to the mappers instead of sending the data to the mappers one by one according to the order of list which will cause some mappers to be idle
         """
 
+        if workType not in ['wordcount', 'invertindex']:
+            raise ValueError("The work type should be either wordcount or invertindex")
+        
         # before starting the process, we need to send work type to the mappers and reducers
-        time.sleep(1) # wait for the workers to start
+        time.sleep(2) # wait for the workers to start
         self.controlPushSocket.send(workType.encode())
 
         readyWorkers = 0
@@ -160,36 +163,65 @@ class MasterNode:
         #         readyWorkers += 1
 
         print("All workers are ready!")
-        
 
-        with open(inputData, 'r') as f:
-            data = f.readlines()
-
-        numLines = len(data)
-        numLinesPerMapper = numLines // self.numMappers
-
-    
         def sendToMapper(data):
             data = "".join(data)
             self.pushSocket.send_string(data)
+        
+        if workType == 'wordcount':
+            with open(inputData, 'r') as f:
+                data = f.readlines()
 
-        for i in range(self.numMappers):
-            start = i * numLinesPerMapper
-            end = (i + 1) * numLinesPerMapper if i != self.numMappers - 1 else numLines # sorry for the last mapper, maybe more lines than the others
-            thread = threading.Thread(target=sendToMapper, args=(data[start:end],))
-            thread.start()
+            numLines = len(data)
+            numLinesPerMapper = numLines // self.numMappers
 
 
-        results = []
-        # receive a predefined number of messages from the reducers
-        for i in range(self.numReducers):
-            message = self.pullSocket.recv_string()
-            result = json.loads(message)
-            results.append(result)
-        with open(outputLocation, 'w') as f:
-            for result in results:
-                for key, value in result.items():
-                    f.write(f"{key}: {value}\n")
+            for i in range(self.numMappers):
+                start = i * numLinesPerMapper
+                end = (i + 1) * numLinesPerMapper if i != self.numMappers - 1 else numLines # sorry for the last mapper, maybe more lines than the others
+                thread = threading.Thread(target=sendToMapper, args=(data[start:end],))
+                thread.start()
+
+
+            results = []
+            # receive a predefined number of messages from the reducers
+            for i in range(self.numReducers):
+                message = self.pullSocket.recv_string()
+                result = json.loads(message)
+                results.append(result)
+            with open(outputLocation, 'w') as f:
+                for result in results:
+                    for key, value in result.items():
+                        f.write(f"{key}: {value}\n")
+        
+        elif workType == 'invertindex':
+            files = os.listdir(inputData) # this time, the path contains several files
+            for file in files:        
+                with open(os.path.join(inputData, file), 'r') as f:
+                    data = f.readlines()
+                if len(data) == 0:
+                    continue
+                elif len(data) == 1 and data[0] != '\n': # take care one line file without '\n' otherwise last word will merge with document name
+                    data[0] = data[0] + '\n'
+                data.append(file) # add file name in the end of the data
+                thread = threading.Thread(target=sendToMapper, args=(data,))
+                thread.start()
+
+            for i in range(self.numReducers * 2): # send the end of data message to the reducers
+                self.pushSocket.send_string('END_OF_DATA')
+
+            results = []
+
+            for i in range(self.numReducers):  
+                message = self.pullSocket.recv_string()
+                result = json.loads(message)
+                results.append(result)
+
+            with open(outputLocation, 'w') as f:
+                for result in results:
+                    for key, val in result.items():
+                        f.write(f"{key}: {val}\n")
+
 
     """
     destroy the cluster

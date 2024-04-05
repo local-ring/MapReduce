@@ -11,18 +11,24 @@ def wordcount(data, path):
     words = data.split()
     # for each word, generate a key-value pair (word, "1")
     kvpairs = [(word.lower() , "1") for word in words] # I really want to omit value 1 here because it is stupid
-    with open(path, 'w') as f: # write into the local disk
+    with open(path, 'a') as f: # write into the local disk
         for kvpair in kvpairs:
             f.write(kvpair[0] + " " + kvpair[1] + "\n")
 
     return 1
 
-def invertindex(data):
+def invertindex(data, path):
     """
     Create an inverted index for a given text.
     """
     words = data.split()
-    return {word: [i for i, w in enumerate(words) if w == word] for word in set(words)}
+    filename, words = words[-1], words[:-1] # get the document name
+    kvpairs = [(word.lower(), filename, "1") for word in words]
+    with open(path, 'w') as f:
+        for kvpair in kvpairs:
+            f.write(kvpair[0] + " " + kvpair[1] + " " + kvpair[2] + "\n")
+
+    return 1
 
 if __name__ == '__main__':
     mapperPull, mapperPush, controlPull, controlPush, id = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
@@ -57,13 +63,16 @@ if __name__ == '__main__':
     # print(f"Mapper {id} received the work type")
 
     result = []
-    path = f'temp/data_mapper_{id}_t2.txt'
+    path = f'temp/data_mapper_{id}_t3.txt'
     if workType == 'wordcount':
         data = pullSocket.recv_string()
         wordcount(data, path)
     elif workType == 'invertindex':
-        data = pullSocket.recv_string()
-        result = invertindex(data)
+        while 1: # it may receive multiple data
+            data = pullSocket.recv_string()
+            if data == 'END_OF_DATA':
+                break
+            invertindex(data, path)
 
         
     pushSocket = context.socket(zmq.PUSH)

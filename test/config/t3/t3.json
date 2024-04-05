@@ -1,0 +1,9 @@
+{
+    "numMappers": 2,
+    "numReducers": 2,
+    "workType": "invertindex",
+    "inputData": "test/config/t3/docs",
+    "outputLocation": "test/output/t3/results.txt",
+    "ports": [4001, 4002, 4003, 4004, 4408, 5423]
+}
+  

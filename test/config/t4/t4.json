@@ -1,0 +1,9 @@
+{
+    "numMappers": 10,
+    "numReducers": 5,
+    "workType": "invertindex",
+    "inputData": "test/config/t4/",
+    "outputLocation": "test/output/t4/results.txt",
+    "ports": [4001, 4002, 4003, 4004, 4408, 5423]
+}
+  

@@ -25,3 +25,5 @@ We need to make sure they are ready to listen before sending the data, otherwise
 
 
 I uses threading to concurrently send data to different mappers. This is beneficial for performance, as it allows multiple mappers to start processing their respective data chunks without having to wait for others to begin.  the overhead of context switching between threads,
+
+no space in file name for inverted index job becasue we use space as delimiter for key-value pair during transfering data between master and workers.

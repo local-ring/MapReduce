@@ -17,7 +17,7 @@ if __name__ == '__main__':
     numReducers = int(numReducers)
 
     endMessage = 0
-    with open('temp/data_shuffler_t2.txt', 'w') as f:
+    with open('temp/data_shuffler_t3.txt', 'w') as f:
         while endMessage < numMappers:
             data = pullSocket.recv_string()
             if data == 'END_OF_DATA':
@@ -28,7 +28,7 @@ if __name__ == '__main__':
         print(f"Shuffler has received all the data")
 
     # sort the data according to the key
-    with open('temp/data_shuffler.txt', 'r') as f:
+    with open('temp/data_shuffler_t3.txt', 'r') as f:
         data = f.readlines()
     # print(data)
 
@@ -47,7 +47,7 @@ if __name__ == '__main__':
     # send the data to the reducers
     # each reducer will always get complete data with the same key
     for kvpair in data:
-        key, value = kvpair.split()
+        key = kvpair.split()[0] # convention: key value is the first word in the line so that shuffler don't need to know which task it is (workcount/invertindex)
         reducerID = hash(key) % numReducers
         pushSocket.send_multipart([str(reducerID).encode(), kvpair.encode()])
     

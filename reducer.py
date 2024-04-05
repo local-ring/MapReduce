@@ -3,6 +3,7 @@ import sys
 import json
 
 import zmq
+from collections import defaultdict
 
 def wordcount(data):
     """
@@ -23,8 +24,13 @@ def invertindex(data):
     """
     Create an inverted index for a given text.
     """
-    words = data.split()
-    return {word: [i for i, w in enumerate(words) if w == word] for word in set(words)}
+    result = defaultdict(lambda: defaultdict(int)) # we use defaultdict to simplify the code
+    for kvpair in data:
+
+        key, document, value = kvpair.split()
+        result[key][document] += int(value) 
+
+    return result
 
 if __name__ == '__main__':
     reducerPull, reducerPush, controlPull, controlPush, id = sys.argv[1], sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5]
@@ -66,10 +72,11 @@ if __name__ == '__main__':
     # controlSocket.send(b'ready')
     
 
-    tempDataPath = f'temp/data_reducer_{id}_t2.txt'
+    tempDataPath = f'temp/data_reducer_{id}_t3.txt'
     with open(tempDataPath, 'w') as f:
         while 1:
             data = pullSocket.recv()
+            # print(data)
             if data == b'END_OF_DATA':
                 break
             f.write(data.decode())
@@ -81,7 +88,7 @@ if __name__ == '__main__':
     if workType == 'wordcount':
         result = wordcount(data)
     elif workType == 'invertindex':
-        result = invertindex("".join(data))
+        result = invertindex(data)
 
     pushSocket = context.socket(zmq.PUSH)
     pushSocket.connect(reducerPush)
