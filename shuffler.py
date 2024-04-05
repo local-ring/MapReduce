@@ -10,31 +10,49 @@ if __name__ == '__main__':
     pullSocket.bind(shufflerPull)
     print(f"Shuffler is ready to receive the data")
 
-    pushSocket = context.socket(zmq.PUSH)
+    pushSocket = context.socket(zmq.ROUTER) # we need to send same key data to the same reducer, so use ROUTER
     pushSocket.bind(shufflerPush)
 
     numMappers = int(numMappers)
     numReducers = int(numReducers)
 
-    tempDataPath = 'data_shuffler.txt'
-    with open('data.txt', 'w') as f:
-        for i in range(numMappers):
+    endMessage = 0
+    with open('temp/data_shuffler_t2.txt', 'w') as f:
+        while endMessage < numMappers:
             data = pullSocket.recv_string()
-            f.write(data)
-            f.write('\n')
-        print(f"Shuffler has received the data")
+            if data == 'END_OF_DATA':
+                endMessage += 1
+            else:
+                f.write(data)
+
+        print(f"Shuffler has received all the data")
 
     # sort the data according to the key
-    with open('data.txt', 'r') as f:
+    with open('temp/data_shuffler.txt', 'r') as f:
         data = f.readlines()
-    data.sort()
-    
+    # print(data)
+
+    # data.sort()
+        
+    # register the reducers
+    reducers = {}
+    while 1: # listen to the reducers until all reducers are registered
+        id, message = pushSocket.recv_multipart()
+        if message.decode() == "hi" and id not in reducers:
+            reducers[id] = "registered"
+            pushSocket.send_multipart([id, b'ack'])
+            if len(reducers) == numReducers:
+                break
 
     # send the data to the reducers
+    # each reducer will always get complete data with the same key
+    for kvpair in data:
+        key, value = kvpair.split()
+        reducerID = hash(key) % numReducers
+        pushSocket.send_multipart([str(reducerID).encode(), kvpair.encode()])
+    
     for i in range(numReducers):
-        start = i * len(data) // numReducers
-        end = (i + 1) * len(data) // numReducers
-        pushSocket.send_string("".join(data[start:end]))
+        pushSocket.send_multipart([str(i).encode(), b'END_OF_DATA'])
 
     print(f"Shuffler has sent the data to the reducers")
 

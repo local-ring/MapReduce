@@ -104,7 +104,7 @@ class MasterNode:
                           str(self.numMappers),
                           str(self.numReducers)])
 
-        time.sleep(1) # wait for the shuffler to start
+        time.sleep(2) # wait for the shuffler to start
 
         # start the mappers and reducers
         for i in range(numMappers):    
@@ -172,6 +172,7 @@ class MasterNode:
         def sendToMapper(data):
             data = "".join(data)
             self.pushSocket.send_string(data)
+
         for i in range(self.numMappers):
             start = i * numLinesPerMapper
             end = (i + 1) * numLinesPerMapper if i != self.numMappers - 1 else numLines # sorry for the last mapper, maybe more lines than the others
@@ -182,10 +183,13 @@ class MasterNode:
         results = []
         # receive a predefined number of messages from the reducers
         for i in range(self.numReducers):
-            results.append(self.pullSocket.recv_string())
+            message = self.pullSocket.recv_string()
+            result = json.loads(message)
+            results.append(result)
         with open(outputLocation, 'w') as f:
             for result in results:
-                f.write(result)
+                for key, value in result.items():
+                    f.write(f"{key}: {value}\n")
 
     """
     destroy the cluster

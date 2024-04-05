@@ -1,15 +1,21 @@
 import os 
 import sys
-import json
+# import json
 
 import zmq
 
-def wordcount(data):
+def wordcount(data, path):
     """
     Count the number of words in a given text.
     """
     words = data.split()
-    return {word: words.count(word) for word in words}
+    # for each word, generate a key-value pair (word, "1")
+    kvpairs = [(word.lower() , "1") for word in words] # I really want to omit value 1 here because it is stupid
+    with open(path, 'w') as f: # write into the local disk
+        for kvpair in kvpairs:
+            f.write(kvpair[0] + " " + kvpair[1] + "\n")
+
+    return 1
 
 def invertindex(data):
     """
@@ -51,10 +57,10 @@ if __name__ == '__main__':
     # print(f"Mapper {id} received the work type")
 
     result = []
-
+    path = f'temp/data_mapper_{id}_t2.txt'
     if workType == 'wordcount':
         data = pullSocket.recv_string()
-        result = wordcount(data)
+        wordcount(data, path)
     elif workType == 'invertindex':
         data = pullSocket.recv_string()
         result = invertindex(data)
@@ -63,7 +69,13 @@ if __name__ == '__main__':
     pushSocket = context.socket(zmq.PUSH)
     pushSocket.connect(mapperPush)
     # print(f"Mapper {id} is ready to send the data")
-    pushSocket.send_string(json.dumps(result))
+    with open(path, 'r') as f:
+        data = f.readlines()
+        for line in data:
+            pushSocket.send_string(line)
+    
+    # send the end signal to shuffler
+    pushSocket.send_string("END_OF_DATA") # since we converted all words to lowercase, so we can use this as the end signal without worrying the signal is a word
     print(f"Mapper {id} has finished the work")
 
     sys.exit(0)

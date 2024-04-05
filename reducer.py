@@ -8,8 +8,16 @@ def wordcount(data):
     """
     Count the number of words in a given text.
     """
-    words = data.split()
-    return {word: words.count(word) for word in words}
+    result = {}
+    for kvpair in data:
+        key, value = kvpair.split()
+        if key in result:
+            result[key] += int(value)
+        else:
+            result[key] = int(value)
+
+    return result
+
 
 def invertindex(data):
     """
@@ -36,9 +44,17 @@ if __name__ == '__main__':
     controlPushSocket.send(b'ready')
 
 
-    pullSocket = context.socket(zmq.PULL)
+    pullSocket = context.socket(zmq.DEALER)
+    pullSocket.setsockopt_string(zmq.IDENTITY, id) # use id number as the identity
     pullSocket.connect(reducerPull)
-    print(f"Reducer {id} is ready to receive the data")
+
+    receiveAck = False
+
+    while not receiveAck:
+        pullSocket.send(b'hi')
+        ack = pullSocket.recv()
+        if ack == b'ack':
+            receiveAck = True
 
     # receive the work type from the master
     # controlSocket = context.socket(zmq.DEALER)
@@ -50,20 +66,20 @@ if __name__ == '__main__':
     # controlSocket.send(b'ready')
     
 
-
-    tempDataPath = f'data_reducer_{id}.txt'
+    tempDataPath = f'temp/data_reducer_{id}_t2.txt'
     with open(tempDataPath, 'w') as f:
-        data = pullSocket.recv_string()
-        f.write(data)
-        print(f"Reducer {id} has received the data")
+        while 1:
+            data = pullSocket.recv()
+            if data == b'END_OF_DATA':
+                break
+            f.write(data.decode())
 
     # sort the data according to the key
     with open(tempDataPath, 'r') as f:
         data = f.readlines()
-    data.sort()
 
     if workType == 'wordcount':
-        result = wordcount("".join(data))
+        result = wordcount(data)
     elif workType == 'invertindex':
         result = invertindex("".join(data))
 
