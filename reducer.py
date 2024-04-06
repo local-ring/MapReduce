@@ -26,8 +26,7 @@ def invertindex(data):
     """
     result = defaultdict(lambda: defaultdict(int)) # we use defaultdict to simplify the code
     for kvpair in data:
-        print(kvpair)
-
+        # print(kvpair)
         key, document, value = kvpair.split()
         result[key][document] += int(value) 
 

@@ -1,5 +1,5 @@
 {
-    "numMappers": 10,
+    "numMappers": 8,
     "numReducers": 5,
     "workType": "invertindex",
     "inputData": "test/config/t4/docs",
