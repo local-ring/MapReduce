@@ -4,6 +4,6 @@
     "workType": "wordcount",
     "inputData": "test/config/t2/pg2852.txt",
     "outputLocation": "test/output/t2/results.txt",
-    "ports": [4001, 4002, 4003, 4004, 4408, 5423]
+    "ports": [5801, 4102, 4203, 4094, 4498, 5723]
 }
   

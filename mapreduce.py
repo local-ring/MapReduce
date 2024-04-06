@@ -139,7 +139,7 @@ class MasterNode:
             raise ValueError("The work type should be either wordcount or invertindex")
         
         # before starting the process, we need to send work type to the mappers and reducers
-        time.sleep(2) # wait for the workers to start
+
         self.controlPushSocket.send(workType.encode())
 
         readyWorkers = 0
@@ -167,6 +167,11 @@ class MasterNode:
         def sendToMapper(data):
             data = "".join(data)
             self.pushSocket.send_string(data)
+
+        def sendToMapper_ii(data): # the send function for invertindex task
+            data = json.dumps(data)
+            self.pushSocket.send_string(data)
+
         
         if workType == 'wordcount':
             with open(inputData, 'r') as f:
@@ -196,20 +201,36 @@ class MasterNode:
         
         elif workType == 'invertindex':
             files = os.listdir(inputData) # this time, the path contains several files
-            for file in files:        
-                with open(os.path.join(inputData, file), 'r') as f:
-                    data = f.readlines()
-                if len(data) == 0:
-                    continue
-                elif len(data) == 1 and data[0] != '\n': # take care one line file without '\n' otherwise last word will merge with document name
-                    data[0] = data[0] + '\n'
-                data.append(file) # add file name in the end of the data
-                thread = threading.Thread(target=sendToMapper, args=(data,))
-                thread.start()
+            for f in files:
+                if f == '.DS_Store': # fuck the mac
+                    files.remove(f) 
+            numFiles = len(files)
+            numFilesPerMapper = numFiles // self.numMappers
 
-            for i in range(self.numReducers * 2): # send the end of data message to the reducers
-                self.pushSocket.send_string('END_OF_DATA')
+            # divdie file into numMappers parts
+            partitions = {}
+            for i in range(self.numMappers):
+                start = i * numFilesPerMapper
+                end = (i + 1) * numFilesPerMapper if i != self.numMappers - 1 else numFiles
+                partitions[i] = files[start:end]
 
+            """
+            Make sure sending one complete file to one mapper and distribute (as evenly as possible) the files to the mappers
+            the data structure we use for transferring is the dictionary:
+            e.g. {"filename": "doc-1.txt", "content": "this is the content of the file"}
+            """
+            for i in range(self.numMappers):
+                data = []
+                for file in partitions[i]:
+                    with open(f"{inputData}/{file}", 'r') as f:
+                        # print(file)
+                        content = f.readlines()
+                    data.append({"filename": file, "content": content})
+                # sendToMapper_ii(data)
+                thread = threading.Thread(target=sendToMapper_ii, args=(data,))
+                thread.start() # TODO: not sure if the zeromq is thread safe with one socket
+            
+            # get the data from the reducers
             results = []
 
             for i in range(self.numReducers):  
@@ -252,6 +273,7 @@ if __name__ == '__main__':
 
     master = MasterNode(config['ports'])
     master.initiate(config['numMappers'], config['numReducers'])
+    time.sleep(1) # wait for the workers to start
     master.mapreduce(config['inputData'], config['outputLocation'], config['workType'])
     master.destroy()
     

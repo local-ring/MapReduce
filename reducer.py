@@ -26,6 +26,7 @@ def invertindex(data):
     """
     result = defaultdict(lambda: defaultdict(int)) # we use defaultdict to simplify the code
     for kvpair in data:
+        print(kvpair)
 
         key, document, value = kvpair.split()
         result[key][document] += int(value) 
@@ -72,7 +73,7 @@ if __name__ == '__main__':
     # controlSocket.send(b'ready')
     
 
-    tempDataPath = f'temp/data_reducer_{id}_t3.txt'
+    tempDataPath = f'temp/data_reducer_{id}_t4.txt'
     with open(tempDataPath, 'w') as f:
         while 1:
             data = pullSocket.recv()

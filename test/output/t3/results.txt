@@ -1,6 +1,6 @@
-a: {'doc-2.txt': 2, 'doc-3.txt': 2}
-e: {'doc-2.txt': 2}
-r: {'doc-2.txt': 2}
-t: {'doc-2.txt': 2}
-v: {'doc-3.txt': 4}
-w: {'doc-3.txt': 2}
+a: {'doc-1.txt': 3, 'doc-2.txt': 1, 'doc-3.txt': 1}
+e: {'doc-2.txt': 1}
+t: {'doc-2.txt': 1}
+w: {'doc-3.txt': 1}
+r: {'doc-1.txt': 1, 'doc-2.txt': 1}
+v: {'doc-3.txt': 2}

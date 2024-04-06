@@ -1,6 +1,6 @@
 import os 
 import sys
-# import json
+import json
 
 import zmq
 
@@ -21,12 +21,19 @@ def invertindex(data, path):
     """
     Create an inverted index for a given text.
     """
-    words = data.split()
-    filename, words = words[-1], words[:-1] # get the document name
-    kvpairs = [(word.lower(), filename, "1") for word in words]
-    with open(path, 'w') as f:
-        for kvpair in kvpairs:
-            f.write(kvpair[0] + " " + kvpair[1] + " " + kvpair[2] + "\n")
+    data = json.loads(data)
+    # print(data)
+
+    for file_content in data:
+        filename = file_content['filename']
+        lines = file_content['content']
+        words = []
+        for line in lines:
+            words.extend(line.split())
+        kvpairs = [(word.lower(), filename, "1") for word in words]
+        with open(path, 'a') as f:
+            for kvpair in kvpairs:
+                f.write(kvpair[0] + " " + kvpair[1] + " " + kvpair[2] + "\n")
 
     return 1
 
@@ -63,16 +70,13 @@ if __name__ == '__main__':
     # print(f"Mapper {id} received the work type")
 
     result = []
-    path = f'temp/data_mapper_{id}_t3.txt'
+    path = f'temp/data_mapper_{id}_t4.txt'
     if workType == 'wordcount':
         data = pullSocket.recv_string()
         wordcount(data, path)
     elif workType == 'invertindex':
-        while 1: # it may receive multiple data
-            data = pullSocket.recv_string()
-            if data == 'END_OF_DATA':
-                break
-            invertindex(data, path)
+        data = pullSocket.recv_string()
+        invertindex(data, path)
 
         
     pushSocket = context.socket(zmq.PUSH)

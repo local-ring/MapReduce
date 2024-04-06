@@ -17,7 +17,8 @@ if __name__ == '__main__':
     numReducers = int(numReducers)
 
     endMessage = 0
-    with open('temp/data_shuffler_t3.txt', 'w') as f:
+    tempDataPath = 'temp/data_shuffler_t4.txt'
+    with open(tempDataPath, 'w') as f:
         while endMessage < numMappers:
             data = pullSocket.recv_string()
             if data == 'END_OF_DATA':
@@ -28,7 +29,7 @@ if __name__ == '__main__':
         print(f"Shuffler has received all the data")
 
     # sort the data according to the key
-    with open('temp/data_shuffler_t3.txt', 'r') as f:
+    with open(tempDataPath, 'r') as f:
         data = f.readlines()
     # print(data)
 
@@ -38,11 +39,14 @@ if __name__ == '__main__':
     reducers = {}
     while 1: # listen to the reducers until all reducers are registered
         id, message = pushSocket.recv_multipart()
+        # print(f"Shuffler received message from reducer {id.decode()}: {message.decode()}")
         if message.decode() == "hi" and id not in reducers:
             reducers[id] = "registered"
             pushSocket.send_multipart([id, b'ack'])
             if len(reducers) == numReducers:
                 break
+
+    print(f"Shuffler has registered all the reducers")
 
     # send the data to the reducers
     # each reducer will always get complete data with the same key
